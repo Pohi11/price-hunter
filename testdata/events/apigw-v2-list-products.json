@@ -1,0 +1,38 @@
+{
+  "version": "2.0",
+  "routeKey": "ANY /v1/{proxy+}",
+  "rawPath": "/v1/products",
+  "rawQueryString": "limit=10",
+  "headers": {
+    "accept": "application/json",
+    "authorization": "Bearer eyJraWQiOi...",
+    "host": "abc123.execute-api.us-east-1.amazonaws.com",
+    "x-forwarded-proto": "https"
+  },
+  "queryStringParameters": { "limit": "10" },
+  "requestContext": {
+    "accountId": "123456789012",
+    "apiId": "abc123",
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "8f2e3a10-1234-4bcd-9abc-0123456789ab",
+          "email": "alice@example.com",
+          "email_verified": "true",
+          "aud": "3n4b5urk1ft4fl3mg5e62d9ado",
+          "iss": "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_EXAMPLE",
+          "token_use": "id"
+        },
+        "scopes": null
+      }
+    },
+    "domainName": "abc123.execute-api.us-east-1.amazonaws.com",
+    "http": { "method": "GET", "path": "/v1/products", "protocol": "HTTP/1.1", "sourceIp": "203.0.113.10", "userAgent": "Mozilla/5.0" },
+    "requestId": "JKJaXmPLvHcESHA=",
+    "routeKey": "ANY /v1/{proxy+}",
+    "stage": "$default",
+    "time": "01/Oct/2026:12:00:00 +0000",
+    "timeEpoch": 1790856000000
+  },
+  "isBase64Encoded": false
+}

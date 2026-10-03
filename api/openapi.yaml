@@ -1,0 +1,466 @@
+openapi: 3.0.3
+info:
+  title: Price Hunter API
+  version: "1.0"
+  description: |
+    Track product prices and get alerted when they reach a target.
+
+    * Money is `{"amount": "94.00", "currency": "USD"}`, a decimal string, never a float.
+    * Errors use RFC 9457 `application/problem+json`.
+    * Lists are paginated with an opaque `cursor`.
+    * Products owned by other users return 404, never 403.
+servers:
+  - url: http://localhost:8088
+    description: Local server mode
+security:
+  - bearer: []
+
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      security: []
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string }
+                  version: { type: string }
+
+  /v1/products:
+    post:
+      summary: Track a product
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProductRequest" }
+            example:
+              name: Ninja Air Fryer
+              url: https://shop.example.com/p/ninja-af101?utm_source=newsletter
+              target_price: { amount: "100.00", currency: USD }
+              check_frequency: 6h
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "201":
+          description: Created; the first check is queued.
+          headers:
+            Location: { schema: { type: string } }
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "413": { $ref: "#/components/responses/Problem" }
+        "415": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+    get:
+      summary: List the watchlist
+      operationId: listProducts
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Product" } }
+                  next_cursor: { type: string }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+
+  /v1/products/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Get a product
+      operationId: getProduct
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          headers:
+            ETag: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "404": { $ref: "#/components/responses/Problem" }
+    patch:
+      summary: Update name, target, frequency or paused state
+      operationId: updateProduct
+      parameters:
+        - name: If-Match
+          in: header
+          description: ETag from a previous response; returns 412 if the product changed.
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProductRequest" }
+            example:
+              target_price: { amount: "90.00", currency: USD }
+              check_frequency: 12h
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Product" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "412": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+    delete:
+      summary: Stop tracking (history is purged asynchronously)
+      operationId: deleteProduct
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /v1/products/{id}/prices:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Price history
+      operationId: getPrices
+      parameters:
+        - { name: from, in: query, description: "RFC 3339; default 30 days before `to`", schema: { type: string, format: date-time } }
+        - { name: to, in: query, description: "RFC 3339; default now", schema: { type: string, format: date-time } }
+        - { name: max_points, in: query, description: Downsample the whole range for charting (min/max per bucket), schema: { type: integer, minimum: 2, maximum: 2000 } }
+        - { name: limit, in: query, description: Raw page size (ignored with max_points), schema: { type: integer, minimum: 1, maximum: 1000 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PriceHistory" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+
+  /v1/products/{id}/checks:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      summary: Queue a manual check (5-minute cooldown per product)
+      operationId: triggerCheck
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "202":
+          description: Queued
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Check" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "429":
+          description: Cooldown in effect
+          headers:
+            Retry-After: { schema: { type: integer } }
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+    get:
+      summary: Recent checks, newest first
+      operationId: listChecks
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 50 } }
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Check" } }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /v1/products/{id}/checks/{checkId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+      - { name: checkId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Check status
+      operationId: getCheck
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Check" }
+        "404": { $ref: "#/components/responses/Problem" }
+
+  /v1/me:
+    get:
+      summary: Current user's profile
+      operationId: getMe
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+    patch:
+      summary: Update notification settings
+      operationId: updateMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [notifications_enabled]
+              properties:
+                notifications_enabled: { type: boolean }
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Profile" }
+        "400": { $ref: "#/components/responses/Problem" }
+
+  /v1/retailers:
+    get:
+      summary: Supported retailers
+      operationId: listRetailers
+      responses:
+        default: { $ref: "#/components/responses/Problem" }
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, generic_allowed]
+                properties:
+                  generic_allowed: { type: boolean, description: Whether sites without a profile are accepted (structured data only) }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, domains]
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        domains: { type: array, items: { type: string } }
+                        currency: { type: string }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Cognito access/ID token, validated by the API Gateway JWT authorizer.
+
+  responses:
+    Problem:
+      description: Error
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+
+  schemas:
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: string, pattern: '^\d+(\.\d+)?$', example: "94.00" }
+        currency: { type: string, pattern: '^[A-Z]{3}$', example: USD }
+
+    CreateProductRequest:
+      type: object
+      additionalProperties: false
+      required: [name, url, target_price]
+      properties:
+        name: { type: string, maxLength: 120 }
+        url: { type: string, maxLength: 2048 }
+        target_price: { $ref: "#/components/schemas/Money" }
+        check_frequency: { type: string, enum: ["1h", "6h", "12h", "24h"], default: "6h" }
+
+    UpdateProductRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, maxLength: 120 }
+        target_price: { $ref: "#/components/schemas/Money" }
+        check_frequency: { type: string, enum: ["1h", "6h", "12h", "24h"] }
+        paused: { type: boolean }
+
+    Product:
+      type: object
+      required: [id, name, url, retailer, target_price, current_price, lowest_price, availability,
+        check_frequency, status, stale, alert, last_checked_at, last_success_at, next_check_at,
+        last_error, created_at, updated_at, version]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        url: { type: string }
+        retailer: { type: string, description: 'Retailer profile ID, or "generic"' }
+        target_price: { $ref: "#/components/schemas/Money" }
+        current_price:
+          allOf: [{ $ref: "#/components/schemas/Money" }]
+          nullable: true
+        lowest_price:
+          allOf: [{ $ref: "#/components/schemas/Money" }]
+          nullable: true
+        availability: { type: string, enum: [IN_STOCK, OUT_OF_STOCK, UNKNOWN] }
+        check_frequency: { type: string, enum: ["1h", "6h", "12h", "24h"] }
+        status: { type: string, enum: [ACTIVE, PAUSED, NEEDS_ATTENTION, GONE] }
+        stale: { type: boolean, description: Last successful price is older than 3 check intervals }
+        alert:
+          type: object
+          required: [state, triggered_at]
+          properties:
+            state: { type: string, enum: [ARMED, TRIGGERED] }
+            triggered_at: { type: string, format: date-time, nullable: true }
+        last_checked_at: { type: string, format: date-time, nullable: true }
+        last_success_at: { type: string, format: date-time, nullable: true }
+        next_check_at: { type: string, format: date-time, nullable: true }
+        last_error:
+          type: object
+          nullable: true
+          required: [code, retryable]
+          properties:
+            code: { $ref: "#/components/schemas/OutcomeCode" }
+            retryable: { type: boolean }
+        latest_check:
+          type: object
+          required: [id, status]
+          properties:
+            id: { type: string }
+            status: { $ref: "#/components/schemas/CheckStatus" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        version: { type: integer, description: Increments on user edits; also exposed as the ETag }
+
+    PriceHistory:
+      type: object
+      required: [product_id, currency, resolution, points, summary]
+      properties:
+        product_id: { type: string }
+        currency: { type: string }
+        resolution: { type: string, enum: [raw, downsampled] }
+        points:
+          type: array
+          items:
+            type: object
+            required: [t, price, availability]
+            properties:
+              t: { type: string, format: date-time }
+              price: { type: string }
+              availability: { type: string, enum: [IN_STOCK, OUT_OF_STOCK, UNKNOWN] }
+              suspect: { type: boolean, description: Anomalous value awaiting confirmation; never triggers alerts }
+        summary:
+          type: object
+          required: [min, max, latest, count]
+          properties:
+            min: { type: string, nullable: true }
+            max: { type: string, nullable: true }
+            latest: { type: string, nullable: true }
+            count: { type: integer }
+        next_cursor: { type: string }
+
+    CheckStatus:
+      type: string
+      enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, SKIPPED]
+
+    OutcomeCode:
+      type: string
+      enum: [OK, PRICE_NOT_FOUND, AMBIGUOUS_PRICE, IMPLAUSIBLE_PRICE, CURRENCY_MISMATCH, FETCH_TRANSIENT,
+        RATE_LIMITED, BLOCKED, ROBOTS_DISALLOWED, NOT_FOUND, FORBIDDEN_TARGET, UNSUPPORTED_CONTENT,
+        TOO_LARGE, HTTP_ERROR, CIRCUIT_OPEN, PRODUCT_INACTIVE]
+
+    Check:
+      type: object
+      required: [check_id, product_id, status, trigger, queued_at, started_at, finished_at, duration_ms, result, error, links]
+      properties:
+        check_id: { type: string }
+        product_id: { type: string }
+        status: { $ref: "#/components/schemas/CheckStatus" }
+        trigger: { type: string, enum: [INITIAL, SCHEDULED, MANUAL, RECHECK] }
+        queued_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        duration_ms: { type: integer, nullable: true }
+        result:
+          type: object
+          nullable: true
+          required: [price, alert_triggered]
+          properties:
+            price:
+              allOf: [{ $ref: "#/components/schemas/Money" }]
+              nullable: true
+            strategy: { type: string, enum: [jsonld, meta, selectors] }
+            alert_triggered: { type: boolean }
+        error:
+          type: object
+          nullable: true
+          required: [code, retryable]
+          properties:
+            code: { $ref: "#/components/schemas/OutcomeCode" }
+            message: { type: string }
+            retryable: { type: boolean }
+        links:
+          type: object
+          additionalProperties: { type: string }
+
+    Profile:
+      type: object
+      required: [user_id, email, notifications_enabled, product_count, product_limit]
+      properties:
+        user_id: { type: string }
+        email: { type: string }
+        notifications_enabled: { type: boolean }
+        product_count: { type: integer }
+        product_limit: { type: integer }
+
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        request_id: { type: string }
+        existing_product_id: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: { type: string }
+              code: { type: string }
+              message: { type: string }

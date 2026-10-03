@@ -1,0 +1,24 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      aws-sdk:
+        patterns: ["github.com/aws/*"]
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: terraform
+    directories: [/infra/bootstrap, /infra/envs/dev, /infra/envs/prod]
+    schedule:
+      interval: monthly

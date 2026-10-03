@@ -1,0 +1,14 @@
+# Local infrastructure for development and integration tests.
+#   docker compose up -d
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    ports: ["8000:8000"]
+
+  sqs:
+    # ElasticMQ implements the SQS API, including redrive to a DLQ.
+    image: softwaremill/elasticmq-native:latest
+    ports: ["9324:9324", "9325:9325"] # 9325 = web UI
+    volumes:
+      - ./scripts/elasticmq.conf:/opt/elasticmq.conf:ro

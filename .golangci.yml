@@ -1,0 +1,37 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - revive
+    - unconvert
+  settings:
+    gosec:
+      excludes:
+        - G104 # covered by errcheck
+        - G404 # math/rand is fine for jitter; nothing security-sensitive uses it
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, noctx, bodyclose]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Pohi11/price-hunter

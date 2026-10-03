@@ -1,0 +1,20 @@
+{
+  "Records": [
+    {
+      "messageId": "059f36b4-87a3-44ab-83d2-661975830a7d",
+      "receiptHandle": "AQEBwJnKyrHigUMZj6rYigCgxlaS3SLy0a...",
+      "body": "{\"user_id\":\"a1b2\",\"product_id\":\"01JA8Q9K3Z\",\"check_id\":\"01JA9X2T7B\",\"trigger\":\"SCHEDULED\",\"enqueued_at\":\"2026-10-01T12:00:00Z\"}",
+      "attributes": {
+        "ApproximateReceiveCount": "1",
+        "SentTimestamp": "1790856000000",
+        "SenderId": "AIDAIENQZJOLO23YVJ4VO",
+        "ApproximateFirstReceiveTimestamp": "1790856000100"
+      },
+      "messageAttributes": {},
+      "md5OfBody": "e4e68fb7bd0e697a0ae8f1bb342846b3",
+      "eventSource": "aws:sqs",
+      "eventSourceARN": "arn:aws:sqs:us-east-1:123456789012:pricehunter-dev-checks",
+      "awsRegion": "us-east-1"
+    }
+  ]
+}

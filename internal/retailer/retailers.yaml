@@ -1,0 +1,50 @@
+# Retailer profiles. Adding a retailer is a config change, not new Go code.
+#
+# strategies run in order; the first one that finds a plausible price wins.
+#   jsonld    - schema.org Product/Offer in <script type="application/ld+json">
+#   meta      - Open Graph product:price tags and itemprop microdata
+#   selectors - the CSS selectors below (most fragile; use only when needed)
+#
+# keep_params: if set, only these query parameters are kept when
+# canonicalizing URLs (everything else is treated as tracking noise).
+#
+# robots.txt is always honored.
+#
+# Only list retailers whose terms permit automated, low-frequency access.
+# Heavily bot-protected sites are intentionally unsupported (see ADR-005).
+
+generic:
+  name: Generic (structured data)
+  strategies: [jsonld, meta]
+  rate_per_second: 0.2
+
+retailers:
+  - id: demostore
+    name: Price Hunter Demo Store
+    # Local dev host; the deployed demo store's host is added at runtime
+    # from PH_DEMOSTORE_HOST.
+    domains: [localhost, 127.0.0.1]
+    currency: USD
+    strategies: [jsonld, meta, selectors]
+    rate_per_second: 50
+    selectors:
+      price: ["[data-testid=price]", ".product-price .amount"]
+      title: ["h1"]
+      availability:
+        selector: ".stock"
+        in_stock_contains: ["in stock"]
+        out_of_stock_contains: ["out of stock", "sold out"]
+
+  - id: books-toscrape
+    name: Books to Scrape (scraping sandbox)
+    domains: [books.toscrape.com]
+    currency: GBP
+    strategies: [selectors]
+    rate_per_second: 0.5
+    selectors:
+      price: ["div.product_main p.price_color"]
+      title: ["div.product_main h1"]
+      availability:
+        selector: "div.product_main p.availability"
+        in_stock_contains: ["in stock"]
+        out_of_stock_contains: ["out of stock"]

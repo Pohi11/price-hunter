@@ -1,0 +1,130 @@
+name: Deploy
+
+# main -> dev (automatic, smoke-tested) -> prod (manual approval on the
+# "prod" GitHub environment). The same artifacts are promoted; prod never
+# builds. Run manually to redeploy or roll back any SHA.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (12-char git SHA) to deploy; empty = this commit"
+        required: false
+      target:
+        description: "Environment"
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  contents: read
+
+env:
+  VERSION: ${{ inputs.version || '' }}
+
+jobs:
+  dev:
+    # Automatic deploys on merge start once the AWS account is connected:
+    # set the repository variable DEPLOY_ENABLED=true (see docs/deploying.md).
+    if: (github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true') || inputs.target == 'dev'
+    runs-on: ubuntu-latest
+    environment: dev # holds AWS_DEPLOY_ROLE_ARN, TF_STATE_BUCKET, ARTIFACTS_BUCKET, SMOKE_* secrets
+    concurrency: deploy-dev
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=${VERSION:-${GITHUB_SHA::12}}" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Deploy
+        env:
+          TF_VAR_artifacts_bucket: ${{ vars.ARTIFACTS_BUCKET }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+          TF_VAR_email_from: ${{ vars.EMAIL_FROM }}
+        run: |
+          printf 'bucket = "%s"\nregion = "%s"\n' "${{ vars.TF_STATE_BUCKET }}" "${{ vars.AWS_REGION || 'us-east-1' }}" > infra/envs/dev/backend.hcl
+          scripts/deploy.sh dev "${{ steps.v.outputs.version }}"
+      - name: Smoke test (full, as a dedicated test user)
+        env:
+          SMOKE_USER: ${{ secrets.SMOKE_USER }}
+          SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+        run: |
+          out() { terraform -chdir=infra/envs/dev output -json app | python3 -c "import json,sys; print(json.load(sys.stdin)['$1'])"; }
+          POOL=$(out user_pool_id); CLIENT=$(out user_pool_client_id); API=$(out api_url)
+          DEMO=$(terraform -chdir=infra/envs/dev output -json app | python3 -c "import json,sys; print(json.load(sys.stdin)['demostore_url'])")
+          TOKEN=$(aws cognito-idp admin-initiate-auth --user-pool-id "$POOL" --client-id "$CLIENT" \
+            --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters "USERNAME=$SMOKE_USER,PASSWORD=$SMOKE_PASSWORD" \
+            --query AuthenticationResult.IdToken --output text)
+          echo "::add-mask::$TOKEN"
+          go run ./cmd/smoke -api "$API" -token "$TOKEN" -product-url "${DEMO%/}/p/air-fryer"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.v.outputs.version }}
+          path: dist/
+          retention-days: 30
+
+  prod:
+    needs: dev
+    if: always() && (needs.dev.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.target == 'prod'))
+    runs-on: ubuntu-latest
+    environment: prod # required reviewers configured in GitHub -> manual approval gate
+    concurrency: deploy-prod
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: echo "version=${{ needs.dev.outputs.version || inputs.version }}" >> "$GITHUB_OUTPUT"
+      - name: Fetch the artifacts that passed dev
+        if: needs.dev.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ steps.v.outputs.version }}
+          path: dist/
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Deploy (refuses to build; promotes tested artifacts only)
+        env:
+          TF_VAR_artifacts_bucket: ${{ vars.ARTIFACTS_BUCKET }}
+          TF_VAR_alarm_email: ${{ vars.ALARM_EMAIL }}
+          TF_VAR_email_from: ${{ vars.EMAIL_FROM }}
+        run: |
+          printf 'bucket = "%s"\nregion = "%s"\n' "${{ vars.TF_STATE_BUCKET }}" "${{ vars.AWS_REGION || 'us-east-1' }}" > infra/envs/prod/backend.hcl
+          scripts/deploy.sh prod "${{ steps.v.outputs.version }}"
+      - name: Smoke test (read-only)
+        run: |
+          API=$(terraform -chdir=infra/envs/prod output -json app | python3 -c "import json,sys; print(json.load(sys.stdin)['api_url'])")
+          go run ./cmd/smoke -read-only -api "$API"

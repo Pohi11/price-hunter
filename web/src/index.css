@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/* Design tokens. Utilities reference these variables, so dark mode is a
+   single override block. */
+:root {
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-2: #f0efea;
+  --ink: #1b2130;
+  --muted: #5d6576;
+  --line: #e3e1da;
+  --accent: #1f6f43;
+  --accent-ink: #ffffff;
+  --accent-soft: #e3f2e8;
+  --warn: #8a5300;
+  --warn-soft: #fbf0dc;
+  --bad: #b42318;
+  --bad-soft: #fde8e6;
+  --info: #3b4a66;
+  --info-soft: #eaeef5;
+  --chart-line: #1f6f43;
+  --chart-target: #b42318;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12151c;
+    --surface: #1a1f29;
+    --surface-2: #222835;
+    --ink: #e8eaef;
+    --muted: #9aa3b5;
+    --line: #2e3544;
+    --accent: #4cc07e;
+    --accent-ink: #0d1f15;
+    --accent-soft: #18301f;
+    --warn: #f0b45a;
+    --warn-soft: #33270f;
+    --bad: #f2867b;
+    --bad-soft: #3a1c1a;
+    --info: #b7c3da;
+    --info-soft: #232c3d;
+    --chart-line: #4cc07e;
+    --chart-target: #f2867b;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

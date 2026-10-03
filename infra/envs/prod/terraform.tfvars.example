@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars (git-ignored), or pass with -var in CI.
+artifacts_bucket = "pricehunter-artifacts-<ACCOUNT_ID>"
+alarm_email      = "you@example.com"

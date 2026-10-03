@@ -1,0 +1,41 @@
+# Build output
+/bin/
+/dist/
+*.exe
+*.test
+*.zip
+coverage.out
+
+# Local data
+/data/
+.env
+.env.*
+
+# Frontend
+web/node_modules/
+web/dist/
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform.lock.hcl.bak
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Terraform local inputs
+infra/envs/*/backend.hcl
+infra/envs/*/terraform.tfvars
+
+# Local UI config pointing at a deployed environment
+web/public/config.json

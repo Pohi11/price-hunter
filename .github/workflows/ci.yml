@@ -1,0 +1,190 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Go lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          args: --build-tags integration
+
+  unit:
+    name: Go unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Unit tests (race detector)
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - name: Fuzz smoke (10s per target)
+        run: make fuzz FUZZTIME=10s
+      - name: Coverage summary
+        run: |
+          echo "### Go coverage" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -1 >> "$GITHUB_STEP_SUMMARY"
+
+  integration:
+    name: Integration tests (DynamoDB Local + ElasticMQ)
+    runs-on: ubuntu-latest
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports: ["8000:8000"]
+      sqs:
+        image: softwaremill/elasticmq-native:latest
+        ports: ["9324:9324"]
+    env:
+      CI: "true" # integration tests fail (instead of skip) if the services are unreachable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 -tags integration ./internal/store ./internal/api ./internal/e2e ./internal/queue
+
+  web:
+    name: Web UI
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: API types match the OpenAPI spec
+        run: npm run gen:api && git diff --exit-code src/api/schema.d.ts
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  build:
+    name: Build Lambda artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: scripts/build-lambdas.sh "${GITHUB_SHA::12}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lambdas-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+
+  terraform:
+    name: Terraform checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+      - run: terraform fmt -check -recursive infra
+      - name: Validate every root
+        run: |
+          for d in infra/bootstrap infra/envs/dev infra/envs/prod; do
+            terraform -chdir="$d" init -backend=false -input=false >/dev/null
+            terraform -chdir="$d" validate
+          done
+      - uses: terraform-linters/setup-tflint@v4
+      - run: tflint --init --config "$PWD/infra/.tflint.hcl" && tflint --recursive --chdir infra --config "$PWD/infra/.tflint.hcl"
+      - name: IaC misconfiguration scan (exceptions documented in .trivyignore.yaml)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: config
+          scan-ref: infra
+          severity: MEDIUM,HIGH,CRITICAL
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
+
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks scans history
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Go vulnerability check (reachable code only)
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: Secret scan
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest git /repo --redact --no-banner
+      - name: Dependency scan (Go + npm lockfiles)
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  plan:
+    name: Terraform plan (dev)
+    # Runs only once AWS is configured (repository variable AWS_PLAN_ROLE_ARN).
+    if: github.event_name == 'pull_request' && vars.AWS_PLAN_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC to AWS
+      pull-requests: write # plan comment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.15"
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      - name: Plan
+        id: plan
+        working-directory: infra/envs/dev
+        env:
+          TF_VAR_artifacts_bucket: ${{ vars.ARTIFACTS_BUCKET }}
+          TF_VAR_app_version: plan-only
+        run: |
+          printf 'bucket = "%s"\nregion = "%s"\n' "${{ vars.TF_STATE_BUCKET }}" "${{ vars.AWS_REGION || 'us-east-1' }}" > backend.hcl
+          terraform init -input=false -backend-config=backend.hcl
+          terraform plan -input=false -lock=false -no-color -out=tf.plan > plan.txt 2>&1 || (cat plan.txt; exit 1)
+          terraform show -no-color tf.plan | tail -c 60000 > plan-show.txt
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('infra/envs/dev/plan-show.txt', 'utf8');
+            const summary = (body.match(/Plan: .*|No changes\..*/) || ['(see logs)'])[0];
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: context.issue.number,
+              body: `### Terraform plan (dev)\n**${summary}**\n<details><summary>Full plan</summary>\n\n\`\`\`hcl\n${body}\n\`\`\`\n</details>`,
+            });

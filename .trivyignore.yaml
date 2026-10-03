@@ -1,0 +1,53 @@
+# Accepted infrastructure-scan exceptions. Every entry states why the
+# finding doesn't apply to this system's threat model or budget. Anything
+# not listed here fails CI (trivy config --severity HIGH,CRITICAL).
+# Reviewed 2026-10-01; see docs/security.md.
+misconfigurations:
+  - id: AWS-0011
+    statement: >
+      No WAF on CloudFront. The distribution serves only static files; API
+      abuse is limited by API Gateway throttling and per-user quotas. WAF
+      costs >= $5/month plus per-request fees. Revisit before opening
+      self-signup to the public.
+  - id: AWS-0095
+    statement: >
+      Alarm SNS topic unencrypted. It carries alarm names and metric values,
+      no user data. CloudWatch alarms cannot publish to topics encrypted with
+      the AWS-managed SNS key, so encryption would require a $1/month CMK.
+  - id: AWS-0132
+    statement: >
+      S3 uses SSE-S3 (AES-256) rather than a customer-managed KMS key. Data is
+      encrypted at rest either way; a CMK adds key-policy control we don't
+      need (single account, single team) at $1/month per key plus API costs.
+  - id: AWS-0017
+    statement: >
+      CloudWatch Logs use the service default encryption. Logs contain no
+      emails (hashed) or secrets (redacted); a CMK adds cost without
+      changing who can read them.
+  - id: AWS-0025
+    statement: >
+      DynamoDB encrypted at rest with the AWS-owned key. Same reasoning as
+      AWS-0132.
+  - id: AWS-0066
+    statement: >
+      X-Ray tracing is opt-in via the `tracing` variable. Correlation IDs in
+      structured logs cover a 4-function system.
+  - id: AWS-0089
+    statement: >
+      No S3 server access logging: buckets hold reproducible build output and
+      14-day diagnostic snapshots; CloudTrail records management events.
+  - id: AWS-0010
+    statement: >
+      No CloudFront access logs: the site is a static SPA; API access logs
+      are kept by API Gateway.
+  - id: AWS-0090
+    statement: >
+      Versioning is enabled for the Terraform state bucket (where it
+      matters). Web assets are rebuilt from git; snapshots expire in 14 days
+      by design.
+  - id: AWS-0024
+    paths:
+      - "modules/app/dynamodb.tf"
+    statement: >
+      Point-in-time recovery is a per-environment variable: on in prod, off in
+      dev (dev data is disposable).
