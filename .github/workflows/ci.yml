@@ -115,7 +115,7 @@ jobs:
       - uses: terraform-linters/setup-tflint@v4
       - run: tflint --init --config "$PWD/infra/.tflint.hcl" && tflint --recursive --chdir infra --config "$PWD/infra/.tflint.hcl"
       - name: IaC misconfiguration scan (exceptions documented in .trivyignore.yaml)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
           scan-ref: infra
@@ -139,7 +139,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest git /repo --redact --no-banner
       - name: Dependency scan (Go + npm lockfiles)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
