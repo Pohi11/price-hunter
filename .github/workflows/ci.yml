@@ -178,7 +178,7 @@ jobs:
           terraform plan -input=false -lock=false -no-color -out=tf.plan > plan.txt 2>&1 || (cat plan.txt; exit 1)
           terraform show -no-color tf.plan | tail -c 60000 > plan-show.txt
       - name: Comment plan on PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
