@@ -15,7 +15,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.0
 	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.77.0
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.1
-	github.com/aws/smithy-go v1.28.1
+	github.com/aws/smithy-go v1.28.2
 	github.com/awslabs/aws-lambda-go-api-proxy v0.16.2
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/oklog/ulid/v2 v2.1.2
