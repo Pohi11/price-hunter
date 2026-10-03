@@ -76,7 +76,7 @@ jobs:
             --query AuthenticationResult.IdToken --output text)
           echo "::add-mask::$TOKEN"
           go run ./cmd/smoke -api "$API" -token "$TOKEN" -product-url "${DEMO%/}/p/air-fryer"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-${{ steps.v.outputs.version }}
           path: dist/
