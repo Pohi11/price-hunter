@@ -21,8 +21,8 @@ require (
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/temoto/robotstxt v1.1.2
 	go.yaml.in/yaml/v3 v3.0.5
-	golang.org/x/net v0.59.0
-	golang.org/x/sync v0.23.0
+	golang.org/x/net v0.61.0
+	golang.org/x/sync v0.24.0
 	golang.org/x/time v0.16.0
 )
 
@@ -48,5 +48,5 @@ require (
 	github.com/oasdiff/yaml v0.1.1 // indirect
 	github.com/oasdiff/yaml3 v0.0.14 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 )
