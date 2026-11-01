@@ -112,7 +112,7 @@ jobs:
             terraform -chdir="$d" init -backend=false -input=false >/dev/null
             terraform -chdir="$d" validate
           done
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
       - run: tflint --init --config "$PWD/infra/.tflint.hcl" && tflint --recursive --chdir infra --config "$PWD/infra/.tflint.hcl"
       - name: IaC misconfiguration scan (exceptions documented in .trivyignore.yaml)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
