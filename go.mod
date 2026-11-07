@@ -20,7 +20,7 @@ require (
 	github.com/getkin/kin-openapi v0.149.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/temoto/robotstxt v1.1.2
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	golang.org/x/net v0.59.0
 	golang.org/x/sync v0.23.0
 	golang.org/x/time v0.16.0
